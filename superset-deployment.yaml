@@ -2,6 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: superset
+  namespace: default
 spec:
   replicas: 1
   selector:
@@ -12,16 +13,60 @@ spec:
       labels:
         app: superset
     spec:
+      initContainers:
+        - name: superset-init
+          image: apache/superset:latest
+          command: ["/bin/bash", "-c"]
+          args:
+            - >
+              superset fab create-admin \
+                --username admin \
+                --firstname Superset \
+                --lastname Admin \
+                --email admin@superset.com \
+                --password s0mEr@ndom3y \
+              && superset db upgrade \
+              && superset init
+          env:
+            - name: SUPERSET_ENV
+              value: "production"
+            - name: SUPERSET_SECRET_KEY
+              value: "thisISaSECRET_1234"
+            - name: SUPERSET_DATABASE_URI
+              value: "sqlite:////var/lib/superset/superset.db"
+          volumeMounts:
+            - name: superset-data
+              mountPath: /var/lib/superset
       containers:
-      - name: superset
-        image: apache/superset:latest
-        ports:
-        - containerPort: 8088
-          protocol: TCP
-        env:
-        - name: SUPERSET_WEBSERVER_PORT
-          value: "8088"
-        - name: SUPERSET_LOAD_EXAMPLES
-          value: "yes"
-        - name: SUPERSET_SECRET_KEY
-          value: "thisISaSECRET_1234"
+        - name: superset
+          image: apache/superset:latest
+          ports:
+            - containerPort: 8088
+          env:
+            - name: SUPERSET_ENV
+              value: "production"
+            - name: SUPERSET_LOAD_EXAMPLES
+              value: "yes"
+            - name: SUPERSET_SECRET_KEY
+              value: "your_secret_key"
+            - name: SUPERSET_DATABASE_URI
+              value: "sqlite:////var/lib/superset/superset.db"
+          volumeMounts:
+            - name: superset-data
+              mountPath: /var/lib/superset
+      volumes:
+        - name: superset-data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: superset
+  namespace: default
+spec:
+  selector:
+    app: superset
+  ports:
+    - protocol: TCP
+      port: 8088
+      targetPort: 8088
